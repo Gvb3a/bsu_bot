@@ -1,0 +1,8 @@
+pymupdf==1.24.10
+frontend==0.0.3
+requests==2.32.3
+urllib3==2.2.2
+colorama==0.4.6
+aiogram==3.13.0
+matplotlib==3.9.2
+numpy==2.1.1
