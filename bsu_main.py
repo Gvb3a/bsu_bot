@@ -1,11 +1,12 @@
 import fitz
 import requests
 import datetime
-import asyncio
+import os
 
 from urllib3 import disable_warnings
-from os import remove
 from colorama import init, Fore, Style
+from dotenv import load_dotenv
+
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart, Command
 from aiogram.types import InputMediaPhoto, Message, CallbackQuery, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup
@@ -17,9 +18,9 @@ if __name__ == '__main__' or '.' not in __name__:
 else:
     from .bsu_sql import sql_mode_or_language, sql_saved_message, sql_change_mode_or_language, sql_stat, plot
 
-
 # init()
-bot_token = ''  # https://t.me/BotFather
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+bot_token = os.getenv('BOT_TOKEN')
 bot = Bot(bot_token)
 dp = Dispatcher()
 
@@ -54,7 +55,7 @@ def create_main_inline_keyboard(l, path):
     # расписания хранятся по следующему пути:
     # https://philology.bsu.by/files/dnevnoe/{тип расписания}/{курс}_{специальность}.pdf
     # на классической филологии только один набор
-    inline_classical_philology_3 = [InlineKeyboardButton(text='3 курс', callback_data=f'{path}/3_klassiki')]
+    inline_classical_philology_4 = [InlineKeyboardButton(text='4 курс', callback_data=f'{path}/4_klassiki')]
 
     inline_back = [InlineKeyboardButton(text='Назад', callback_data='back')]
     inline_keyboard = InlineKeyboardMarkup(
@@ -66,7 +67,7 @@ def create_main_inline_keyboard(l, path):
     inline_text_button(['Славянская филология', 'Славянская філалогія'], l),
     inline_button(path, 'slav'),
     inline_text_button(['Классическая  филология', 'Класічная  філалогія'], l),
-    inline_classical_philology_3,
+    inline_classical_philology_4,
     inline_text_button(['Романо-германская филология', 'Рамана-германская філалогія'], l),
     inline_button(path, 'rom-germ'),
     inline_text_button(['Восточная филология', 'Усходняя філалогія'], l),
@@ -76,15 +77,15 @@ def create_main_inline_keyboard(l, path):
     return inline_keyboard
 
 
-main_dict = {  # будет использоваться для 'расшифрования'
-    'raspisanie': ['Расписание занятий студентов дневного отделения (ІІ семестр) 2023-2024 ',
-                   'Расклад заняткаў студэнтаў дзённага аддзялення (ІІ семестр) 2023-2024 '],
-    'USRDO': ['Расписание занятий (дистанционное обучение) студентов дневного отделения (ІІ семестр) 2023-2024 ',
-              'Расклад заняткаў (дыстанцыйнае навучанне) студэнтаў дзённага аддзялення (ІІ семестр) 2023-2024 '],
-    'zachet': ['Расписание зачетов студентов дневного отделения (І семестр) 2023-2024 ',
-               'Расклад залікаў студэнтаў дзённага аддзялення (І семестр) 2023-2024 '],
-    'sesia': ['Расписание консультаций и экзаменов студентов дневного отделения (І семестр 2023-2024) ',
-              'Расклад кансультацый і экзаменаў студэнтаў дзённага аддзялення (І семестр 2023-2024) ']
+main_dict = {  # будет использоваться для 'расшифрования' TODO
+    'raspisanie': ['Расписание занятий студентов дневного отделения ',
+                   'Расклад заняткаў студэнтаў дзённага аддзялення '],
+    'USRDO': ['Расписание занятий (дистанционное обучение) студентов дневного отделения ',
+              'Расклад заняткаў (дыстанцыйнае навучанне) студэнтаў дзённага аддзялення '],
+    'zachet': ['Расписание зачетов студентов дневного отделения ',
+               'Расклад залікаў студэнтаў дзённага аддзялення '],
+    'sesia': ['Расписание консультаций и экзаменов студентов дневного отделения ',
+              'Расклад кансультацый і экзаменаў студэнтаў дзённага аддзялення ']
 
 }
 sup_dict = {
@@ -275,7 +276,7 @@ async def command_stat(message: Message) -> None:
     file_name = plot()
     await message.answer_photo(photo=FSInputFile(f'{file_name}.png'))
     await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id + 1)
-    remove(f'{file_name}.png')
+    os.remove(f'{file_name}.png')
     name = f'{message.from_user.full_name}({message.from_user.username})'
     print(f'stat by {name} at {now()}')
     # print(f'{Fore.RED}stat{Style.RESET_ALL} by {Fore.BLUE}{name}{Style.RESET_ALL} at {now()}')
@@ -355,11 +356,11 @@ async def main(data, user_id, message_id, l, name):
                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[inline_update, inline_back]))
 
             for i in range(count):  # удаляем фотки
-                remove(f'{name_file}_{message_id}_{i + 1}.png')
+                os.remove(f'{name_file}_{message_id}_{i + 1}.png')
         else:
             doc = FSInputFile(f'{name_file}_{message_id}.pdf')
             await bot.send_document(user_id, document=doc, reply_markup=inline_update_keyboard, caption=caption)
-        remove(f'{name_file}_{message_id}.pdf')  # удаляем pdf
+        os.remove(f'{name_file}_{message_id}.pdf')  # удаляем pdf
 
     except:  # действия, в случаи ошибки
         await bot.send_message(user_id, ['Ошибка 404. Страница не найдена', 'Памылка 404. Старонка не знойдзена'][l])
