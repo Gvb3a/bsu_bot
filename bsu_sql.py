@@ -1,7 +1,5 @@
 import sqlite3
 import datetime
-import matplotlib.pyplot as plt
-import numpy as np
 
 
 def current_time():
@@ -13,110 +11,109 @@ def current_time():
 def sql_launch():
     connection = sqlite3.connect('bsu_database.db')
     cursor = connection.cursor()
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS user (
         name TEXT,
+        username TEXT,
         id INTEGER PRIMARY KEY,
-        message TEXT,
-        language INT,
-        mode INT
+        chat_id INT,
+        last_message TEXT,
+        saved_message TEXT,
+        language INT
         )
         ''')
+    
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS stat (
+        CREATE TABLE IF NOT EXISTS statistics (
         name TEXT,
-        type TEXT,
-        speciality TEXT,
-        course TEXT,
+        pdf_link TEXT,
+        auto INT,
         time TEXT
         )
         ''')
+    
+    
     connection.commit()
     connection.close()
 
 
-def sql_stat(name, data):
+def sql_user(name: str, username: str, user_id: int, chat_id: int):
     connection = sqlite3.connect('bsu_database.db')
     cursor = connection.cursor()
+    
+    cursor.execute(f"SELECT * FROM user WHERE id = {user_id}")
+    row = cursor.fetchone()
+    
+    if row is None:  # создаем пользователя если его не было
+        cursor.execute(f"INSERT INTO user(name, username, id, chat_id, last_message, tracked_message, language) VALUES (?, ?, ?, ?, ?, ?, ?)", 
+                       (name, username, user_id, chat_id, 'None', 'None', 0))
+    else:
+        # проверяем, соответствует ли имеющиеся данные с настоящими (например пользователь поменял имя)
+        if name != row[0]:
+            cursor.execute(f"UPDATE user SET name = ? WHERE id = ?", (name, user_id))
 
-    data = data.split('/')
-    type_data = data[0]
-    course, speciality = data[1].split('_')
+        if username != row[1]:
+            cursor.execute(f"UPDATE user SET username = ? WHERE id = ?", (username, user_id))
 
-    cursor.execute(f"INSERT INTO stat(name, type, speciality, course, time) VALUES ('{name}', '{type_data}', "
-                   f"'{speciality}', '{course}', '{current_time()}')")
+        if chat_id != row[3]:
+            cursor.execute(f"UPDATE user SET chat_id = ? WHERE id = ?", (chat_id, user_id))
+
 
     connection.commit()
     connection.close()
 
 
-def plot():
+def sql_stat(name: str, link: str, auto: int = 0) -> None:
+    'Вставляет данные об отправителе, ссылке и о том, отправляется ли оно автоматически или нет'
     connection = sqlite3.connect('bsu_database.db')
     cursor = connection.cursor()
 
-    cursor.execute('SELECT * FROM stat')  # получаем информацию из таблицы
-    rows = cursor.fetchall()  # заносим ее в список
+    cursor.execute(f"INSERT INTO statistics(name, pdf_link, auto, time) VALUES (?, ?, ?)", (name, link, auto, current_time()))
 
-    day = int(datetime.datetime.now().strftime("%d"))  # узнаем сегодняшний день
-    mounth = datetime.datetime.now().strftime("%m")
-    i = -1
-    # создаем списки, в которых находятся 24 списка
-    day_data: list[list[int]] = [0 for _ in range(24)]
-    average_day_data: list[list[int]] = [0 for _ in range(24)]
-    # цикл исполняется, пока день равен сегодняшнему, и пока не пройдется по всем элементам
-    while len(rows) >= abs(i) and int(rows[i][4][9:11]) == day:
-        j = int(rows[i][4][0:2])
-        day_data[j] += 1
-        i -= 1
-
-    i = -1
-    while len(rows) >= abs(i) and rows[i][4][12:14] == mounth:
-        j = int(rows[i][4][0:2])
-        average_day_data[j] += 1 / int(day)
-        i -= 1
-
-    plt.bar(range(24), day_data)
-    plt.plot(range(24), average_day_data, color='r')
-    for i in range(len(day_data)):
-        if day_data[i] != 0:
-            plt.text(i, day_data[i], str(day_data[i]), ha='center', va='bottom')  # добавление подписей к каждой ячейке
-
-    plt.xticks(np.arange(0, 24, step=2), np.arange(0, 24, step=2))  # пронумеровать каждые 2 столбца
-
-    name = datetime.datetime.now().strftime("%H:%M:%S")
-
-    plt.savefig(f'{name}.png')
-    plt.clf()
+    connection.commit()
     connection.close()
-    return name
 
 
-def sql_saved_message(name, user_id, message):
+def sql_get_last_message(user_id):
     connection = sqlite3.connect('bsu_database.db')
     cursor = connection.cursor()
 
     cursor.execute(f"SELECT * FROM user WHERE id = {user_id}")
     row = cursor.fetchone()
-    if row is not None and row[1] is not None:
-        if row[0] != name:
-            cursor.execute(f"UPDATE user SET name = '{name}' WHERE id = {user_id}")
+    
+    if row is None:
+        cursor.execute(f"INSERT INTO user(id, saved_message, last_message, language) VALUES (?, ?, ?, ?)", (user_id, 'None', 'None', 0))
+        last_message = 'None'
+
     else:
-        cursor.execute(f"INSERT INTO user(name, id, message, language) VALUES ('{name}', {user_id}, '0', 0)")
-        connection.commit()
-        print(f'Новый пользователь {name}')
-        return 'error'
+        last_message = row[4]
 
-    if message == 0:
-        connection.close()
-        return row[2] if row[2] != '0' else 'error'
+    connection.commit()
+    connection.close()
+
+    return last_message
+
+
+def sql_set_last_message(user_id, last_message):
+    connection = sqlite3.connect('bsu_database.db')
+    cursor = connection.cursor()
+
+    cursor.execute(f"SELECT * FROM user WHERE id = {user_id}")
+    row = cursor.fetchone()
+    
+    if row is None:
+        cursor.execute(f"INSERT INTO user(id, saved_message, last_message, language) VALUES (?, ?, ?, ?)", (user_id, 'None', last_message, 0))
+
     else:
-        cursor.execute(f"UPDATE user SET message = '{message}' WHERE id = {user_id}")
-        connection.commit()
-        connection.close()
-        return message
+        cursor.execute(f"INSERT INTO user(last_message) VALUES (?)", (last_message))
+
+    connection.commit()
+    connection.close()
+ 
 
 
-def sql_mode_or_language(user_id, what):
+def sql_get_language(user_id):
     connection = sqlite3.connect('bsu_database.db')
     cursor = connection.cursor()
 
@@ -124,26 +121,27 @@ def sql_mode_or_language(user_id, what):
     row = cursor.fetchone()
 
     if row is None:
-        cursor.execute(f"INSERT INTO user(id, language, mode) VALUES ({user_id}, 0, 1)")
-        connection.commit()
-        connection.close()
-        return 0
+        cursor.execute(f"INSERT INTO user(id, saved_message, last_message, language) VALUES (?, ?, ?, ?)", (user_id, 'None', 'None', 0))
+        l = 0
     else:
-        connection.close()
-        return row[3 if what == 'language' else 4]
-
-
-def sql_change_mode_or_language(user_id, changeable):
-    connection = sqlite3.connect('bsu_database.db')
-    cursor = connection.cursor()
-
-    mode_or_language = sql_mode_or_language(user_id, changeable)
-    new_mode = 0 if mode_or_language else 1
-    cursor.execute(f"UPDATE user SET {changeable} = {new_mode} WHERE id = {user_id}")
+        l = row[3]
 
     connection.commit()
     connection.close()
-    return new_mode
+    return l
+
+
+def sql_change_language(user_id):
+    connection = sqlite3.connect('bsu_database.db')
+    cursor = connection.cursor()
+
+    language = sql_get_language(user_id)
+    new_language = 0 if language else 1
+    cursor.execute(f"UPDATE user SET ? = ? WHERE id = ?", ('language', new_language, user_id))
+
+    connection.commit()
+    connection.close()
+    return new_language
 
 
 sql_launch()
