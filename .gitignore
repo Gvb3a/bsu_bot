@@ -4,3 +4,4 @@ __pycache__/
 bsu_database.db
 .env
 .devdbrc
+*.json

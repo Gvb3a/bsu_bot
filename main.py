@@ -2,10 +2,15 @@ import fitz
 import requests
 import datetime
 import os
+import hashlib
+import json
+import asyncio
 
 from urllib3 import disable_warnings
 from colorama import init, Fore, Style
 from dotenv import load_dotenv
+from bs4 import BeautifulSoup
+from deep_translator import GoogleTranslator
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart, Command
@@ -22,9 +27,10 @@ else:
 
 
 message_text = {
-    'start_message': ['Выберете расписание', 'Абярыце расклад'],
-    'help_message': ''
+    'start_message': ['Выберете расписание', 'Абярыце расклад']
 }
+
+
 init()
 path = os.path.dirname(__file__)
 load_dotenv(os.path.join(path, '.env'))
@@ -33,76 +39,163 @@ bot = Bot(bot_token)
 dp = Dispatcher()
 
 
-def start_keyboard(l):  # функция для start inline-keyboard (в зависимости от языка)
-    # l - язык пользователя. 0 - русский, 1 - белорусский
-    inline_start_keyboard = InlineKeyboardMarkup(
-    inline_keyboard=[
-        [InlineKeyboardButton(text=['Расписание занятий студентов дневного отделения (І семестр) 2024-2025',
-                                    'Расклад заняткаў студэнтаў дзённага аддзялення (І семестр) 2024-2025'][l], callback_data='inline_raspisanie')],
-        [InlineKeyboardButton(text=['Расписание занятий (дистанционное обучение) студентов дневного отделения (i семестр) 2024-2025',
-                                    'Расклад заняткаў (дыстанцыйнае навучанне) студэнтаў дзённага аддзялення (i семестр) 2024-2025'][l], callback_data='inline_USRDO')]
-    ])
-    return inline_start_keyboard
+def parsing_links():
+    root_link = 'https://philology.bsu.by'
+    raspisanie_link = f'{root_link}/ru/studjentu/raspisanie'
+
+    text = requests.get(raspisanie_link, verify=False).text
+    soup = BeautifulSoup(text, "html.parser")
+
+    links = {}
+
+    for a_tag in soup.find_all('a', href=True):
+        link = root_link + a_tag['href']
+        text = a_tag.get_text(strip=True)
+
+        if 'raspisanie/' in link:  # логично и просто
+            links[text] = link
+
+    return links
 
 
-def inline_button(path, speciality):  # генерация однотипных inline кнопок
-    inline_list = []
-    for i in range(4):
-        inline_list.append(InlineKeyboardButton(text=f'{i+1} курс', callback_data=f'{path}/{i+1}_{speciality}'))
-    return inline_list
+def translate_to_bel(text: str) -> str:
+    try:
+        return GoogleTranslator(source='ru', target='be').translate(text)
+    except Exception as e:
+        return text
+    
+
+def parsing_pdf(link):
+
+    text = requests.get(link, verify=False).text
+    soup = BeautifulSoup(text, 'html.parser')
+
+    pdf_links = []
+
+    for p_tag in soup.find_all('p'):  # проходимся по специальностям
+
+        strong_tag = p_tag.find('strong')
+        if strong_tag:
+
+            specialty = strong_tag.get_text(strip=True).split('(')[0]
+
+            temp_links = {}
+            for a_tag in p_tag.find_all('a', href=True):  # по курсам
+                pdf_link = a_tag['href']
+                text = a_tag.get_text(strip=True)
+                temp_links[text] = pdf_link
+
+            if temp_links:
+                pdf_links.append({'ru_name': specialty, 'bel_name': translate_to_bel(specialty), 'content': temp_links})
+
+    return pdf_links
+    
+
+def parsing():
+    result = {}
+
+    links = parsing_links()
+
+    for name, link in links.items():
+        pdfs = parsing_pdf(link)
+
+        if pdfs:
+            hash_name = hashlib.md5(name.encode('utf-8')).hexdigest()
+
+            result[hash_name] = {
+                'ru_name': name,
+                'bel_name': translate_to_bel(name),
+                'content': pdfs
+            }
+
+    path = os.path.join(os.path.dirname(__file__), 'data.json')
+    with open(path, 'w', encoding='utf-8') as json_file:
+        json.dump(result, json_file, ensure_ascii=False)
+    
+    print(f'Расписание было обновленно в {current_time()}. Длина: {len(result)}')
+
+    return result
 
 
-def inline_text_button(text, l):
-    return [InlineKeyboardButton(text=text[l], callback_data='text')]
-
-def create_main_inline_keyboard(l, path):
-    # расписания хранятся по следующему пути:
-    # https://philology.bsu.by/files/dnevnoe/{тип расписания}/{курс}_{специальность}.pdf
-    # на классической филологии только один набор
-    inline_classical_philology_4 = [InlineKeyboardButton(text='4 курс', callback_data=f'{path}/4_klassiki')]
-
-    inline_back = [InlineKeyboardButton(text='Назад', callback_data='back')]
-    inline_keyboard = InlineKeyboardMarkup(
-    inline_keyboard=[
-    inline_text_button(['Белорусская филология', 'Беларуская філалогія'], l),
-    inline_button(path, 'bel'),
-    inline_text_button(['Русская филология', 'Руская філалогія'], l),
-    inline_button(path, 'rus'),
-    inline_text_button(['Славянская филология', 'Славянская філалогія'], l),
-    inline_button(path, 'slav'),
-    inline_text_button(['Классическая  филология', 'Класічная  філалогія'], l),
-    inline_classical_philology_4,
-    inline_text_button(['Романо-германская филология', 'Рамана-германская філалогія'], l),
-    inline_button(path, 'rom-germ'),
-    inline_text_button(['Восточная филология', 'Усходняя філалогія'], l),
-    inline_button(path, 'vost'),
-    inline_back
-    ])
-    return inline_keyboard
-
-
-main_dict = {  # будет использоваться для 'расшифрования' TODO
-    'raspisanie': ['Расписание занятий студентов дневного отделения ',
-                   'Расклад заняткаў студэнтаў дзённага аддзялення '],
-    'USRDO': ['Расписание занятий (дистанционное обучение) студентов дневного отделения ',
-              'Расклад заняткаў (дыстанцыйнае навучанне) студэнтаў дзённага аддзялення '],
-    'zachet': ['Расписание зачетов студентов дневного отделения ',
-               'Расклад залікаў студэнтаў дзённага аддзялення '],
-    'sesia': ['Расписание консультаций и экзаменов студентов дневного отделения ',
-              'Расклад кансультацый і экзаменаў студэнтаў дзённага аддзялення ']
-
+'''
+{
+    "d500510e6b9dc0689177a9a1a94b5d67": {
+        "ru_name": "Расписание занятий студентов дневного отделения (І семестр) 2024-2025",
+        "bel_name": "Расклад заняткаў студэнтаў дзённага аддзялення (І семестр) 2024-2025",
+        "content": [
+            {
+                "ru_name": "Специальность \"Белорусская филология\" ",
+                "bel_name": "Спецыяльнасць \"Беларуская філалогія\"",
+                "content": {
+                    "1 курс": "/files/dnevnoe/raspisanie/1_bel.pdf",
+                    ...
+                }
+            },
+            ...
+        ],
+        ...
+    },
+    ...
 }
-sup_dict = {
-    'bel': ['белорусская филология', 'беларуская філалогія'],
-    'rus': ['русская филология', 'руская філалогія'],
-    'slav': ['славянская филология', 'славянская філалогія'],
-    'klassiki': ['классическая  филология', 'класічная  філалогія'],
-    'rom-germ': ['романо-германская филология', 'рамана-германская філалогія'],
-    'vost': ['восточная филология', 'усходняя філалогія']
-}
-start_list = ['Выберите тип расписания. После окончательного выбора бот запомнит Ваше расписание и будет присылать его '
-              'при отправке любого сообщения.', 'Абярыце тып раскладу. Пасля канчатковага выбару бот запомніць Ваш '
-              'расклад і будзе дасылаць яго пры адпраўцы любога паведамлення']
+'''
+
+
+def get_data(json_name: str = 'data.json') -> dict:
+    path = os.path.join(os.path.dirname(__file__), json_name)
+
+    if not(os.path.exists(path)) or os.path.getsize(path) == 0:
+        parsing()
+
+    with open(path, 'r', encoding='utf-8') as file:
+        data = json.load(file)
+
+    return data
+        
+
+
+def start_inline_keyboard(language: int = 0):  # TODO: обработка. Проверка на .pdf
+    language = 'bel_name' if language else 'ru_name'
+    data = get_data()
+
+    inline_keyboard = []
+
+    for callback_data, content in data.items():
+        text = content[language]
+        inline_keyboard.append([InlineKeyboardButton(text=text, callback_data=callback_data)])
+
+    return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
+
+
+def inline_keyboard_by_hash(hashed_text: str, language: int = 0):
+    
+    data = get_data().get(hashed_text, None)
+
+    if data is None:
+        return False
+    else:
+        content = data['content']
+    
+    language = 'bel_name' if language else 'ru_name'
+    
+    inline_keyboard = []
+
+
+
+    for specialty in content:
+        text_button = InlineKeyboardButton(text=str(specialty[language]), callback_data='decorative_button')
+        inline_keyboard.append([text_button])
+
+        courses = []
+        for course_name, course_value in specialty['content'].items():
+            if course_name: # на всяких случай
+                courses.append(InlineKeyboardButton(text=course_name.strip(','), callback_data=course_value))
+
+        inline_keyboard.append(courses)
+
+    inline_keyboard.append([InlineKeyboardButton(text='Назад', callback_data='back')])
+
+    return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
 def current_time():
@@ -115,10 +208,10 @@ def current_time():
 async def command_start_handler(message: Message) -> None:
     sql_user(name=message.from_user.full_name, username=str(message.from_user.username), user_id=message.from_user.id, chat_id=message.chat.id)
     language = sql_get_language(message.from_user.id)
-    await message.answer(text=message_text['start_message'][language], reply_markup=start_keyboard(language))
+    await message.answer(text=message_text['start_message'][language], reply_markup=start_inline_keyboard(language))
 
 
-@dp.callback_query(F.data == 'text')  # реакция, при нажатии на декоративные кнопки
+@dp.callback_query(F.data == 'decorative_button')  # реакция, при нажатии на декоративные кнопки
 async def inline_text(callback: CallbackQuery):
     sql_user(name=callback.from_user.full_name, username=str(callback.from_user.username), user_id=callback.from_user.id, chat_id=callback.chat_instance, increase_counter=False)
     language = sql_get_language(callback.from_user.id)
@@ -130,7 +223,7 @@ async def inline_text(callback: CallbackQuery):
 async def inline_back_handler(callback: CallbackQuery):
     sql_user(callback.from_user.full_name, str(callback.from_user.username), callback.from_user.id, callback.chat_instance, False)
     language = sql_get_language(callback.from_user.id)
-    await callback.message.edit_text(text=message_text['start_message'][language], reply_markup=start_keyboard(language))
+    await callback.message.edit_text(text=message_text['start_message'][language], reply_markup=start_inline_keyboard(language))
     await callback.answer()
 
 
@@ -145,12 +238,13 @@ async def command_language(message: Message) -> None:
 
 
 def downdload_pdf(link: str) -> str | bool:
-
-    if not link.startswith('https:/'):
-        root_link = 'https://philology.bsu.by/'
-        link = root_link + link
-
+    
     try:
+        if not link.startswith('https:/'):
+            root_link = 'https://philology.bsu.by/'
+            link = root_link + link
+
+
         response = requests.get(link, verify=False)
 
         file_name = '_'.join(link.split('/')[-3:])  # https://philology.bsu.by/files/dnevnoe/raspisanie/4_rom-germ.pdf >>> dnevnoe_raspisanie_4_rom-germ.pdf
@@ -191,14 +285,7 @@ async def callback_data(callback: types.CallbackQuery):
     sql_user(callback.from_user.full_name, str(callback.from_user.username), callback.from_user.id, callback.chat_instance, True)
     language = sql_get_language(callback.from_user.id)
     
-    if data.startswith('inline'):
-        data = data[7:]
-
-        await callback.message.edit_text(text=main_dict[data][language]+['Выберете специальность', 'Абярыце спецыяльнасць'][language],
-                                            reply_markup=create_main_inline_keyboard(language, data))
-
-    else:
-
+    if data.endswith('.pdf'):
         sql_set_last_message(callback.from_user.id, data)
 
         file_name = downdload_pdf(data)
@@ -230,6 +317,24 @@ async def callback_data(callback: types.CallbackQuery):
             await bot.send_message(callback.from_user.id, text)
 
         sql_statistics(name=callback.from_user.full_name, link=data, auto=0)
+
+
+    else:
+        inline_keyboard = inline_keyboard_by_hash(data, language)
+
+        if inline_keyboard:
+            language_str = 'bel_name' if language else 'ru_name'
+            schedule_type = get_data()[data][language_str]
+            text = schedule_type + ('. ' if not schedule_type.endswith('.') else '') + ['Выберете специальность и курс', 'Абярыце спецыяльнасць і курс'][language]
+            try:
+                await callback.message.edit_text(text=text, reply_markup=inline_keyboard)
+            except:
+                await callback.answer(['Ошибка. Если вы не можете получитить доступ к чему-то важному, то свяжитесь с администратором.', 'Памылка. Калі вы не можаце атрымаць доступ да чагосьці важнага, то звяжыцеся з адміністратарам.'][language])
+        else:
+            text = ['Ошибка при поиске расписания. Отправьте команду /start и попробуйте еще раз. Если не поможет, то обратитись к администратору', 'Памылка пры пошуку раскладу. Адпраўце каманду /start і паспрабуйце яшчэ раз. Калі не дапаможа, звернецеся да адміністратара'][language]
+            await callback.answer(text=text)
+
+        
 
     await callback.answer()
 
@@ -276,8 +381,22 @@ async def main_handler(message: types.Message) -> None:
     sql_statistics(name=message.from_user.full_name, link=link, auto=0)
 
 
+async def run_polling():
+    await dp.start_polling(bot, skip_updates=True)
+
+
+async def periodic_parsing(): # Запуск парсинга раз в 24 часа
+    while True:
+        parsing()
+        await asyncio.sleep(24*60*60)
+
+
+async def main():
+    await asyncio.gather(
+        run_polling(),
+        periodic_parsing()
+    )
 
 
 if __name__ == '__main__':
-    print(f'The bot launches at {current_time()}')
-    dp.run_polling(bot, skip_updates=True)
+    asyncio.run(main())

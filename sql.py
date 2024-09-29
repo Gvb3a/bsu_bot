@@ -17,7 +17,6 @@ def sql_launch():
         name TEXT,
         username TEXT,
         id INTEGER PRIMARY KEY,
-        chat_id INT,
         last_message TEXT,
         tracked_message TEXT,
         language INT,
@@ -51,7 +50,6 @@ def sql_user(name: str, username: str, user_id: int, chat_id: int, increase_coun
         'name': name,
         'username': username,
         'id': user_id,
-        'chat_id': chat_id,
         'last_message': 'None',
         'tracked_message': 'None',
         'language': 0,
@@ -61,7 +59,7 @@ def sql_user(name: str, username: str, user_id: int, chat_id: int, increase_coun
     }
     
     if row is None:  # создаем пользователя если его не было
-        cursor.execute(f"INSERT INTO user(name, username, id, chat_id, last_message, tracked_message, language, first_message_time, last_message_time, number_of_messages) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+        cursor.execute(f"INSERT INTO user(name, username, id, last_message, tracked_message, language, first_message_time, last_message_time, number_of_messages) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", 
                        tuple(standart_value.values()))
     else:
         # проверяем, соответствует ли имеющиеся данные с настоящими (например пользователь поменял имя)
@@ -70,9 +68,6 @@ def sql_user(name: str, username: str, user_id: int, chat_id: int, increase_coun
 
         if username != row[1]:
             cursor.execute(f"UPDATE user SET username = ? WHERE id = ?", (username, user_id))
-
-        if chat_id != row[3]:
-            cursor.execute(f"UPDATE user SET chat_id = ? WHERE id = ?", (chat_id, user_id))
 
         if increase_counter:  # TODO: перенести в sql_statistic
             cursor.execute(f"UPDATE user SET last_message_time = ? WHERE id = ?", (current_time(), user_id))
@@ -104,7 +99,7 @@ def sql_get_last_message(user_id: int) -> str | bool:
     if row is None:
         last_message = False
     else:
-        last_message = row[4]
+        last_message = row[3]
 
     connection.close()
 
@@ -132,7 +127,7 @@ def sql_get_language(user_id: int) -> int:
     if row is None:
         l = 0
     else:
-        l = row[6]
+        l = row[5]
 
     connection.commit()
     connection.close()
@@ -145,7 +140,7 @@ def sql_change_language(user_id):
 
     language = sql_get_language(user_id)
     new_language = 0 if language else 1
-    cursor.execute(f"UPDATE user SET ? = ? WHERE id = ?", ('language', new_language, user_id))
+    cursor.execute(f"UPDATE user SET language = ? WHERE id = ?", (new_language, user_id))
 
     connection.commit()
     connection.close()
@@ -153,6 +148,3 @@ def sql_change_language(user_id):
 
 
 sql_launch()
-
-if __name__ == '__main__':
-    sql_user(name='Boris', username = 'gvb3a', user_id=123, chat_id=321)
