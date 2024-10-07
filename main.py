@@ -1,29 +1,24 @@
-import fitz
-import requests
-import datetime
+
+from math import e
 import os
-import hashlib
-import json
 import asyncio
 
+from librosa import ex
 from urllib3 import disable_warnings
 from colorama import init, Fore, Style
 from dotenv import load_dotenv
-from bs4 import BeautifulSoup
-from deep_translator import GoogleTranslator
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart, Command
 from aiogram.types import InputMediaPhoto, Message, CallbackQuery, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup
-from aiogram.client.session.aiohttp import AiohttpSession
 
-
-disable_warnings()  # Сайт БГУ не безопасен ¯\_(ツ)_/¯
 
 if __name__ == '__main__' or '.' not in __name__:
     from sql import sql_user, sql_statistics, sql_get_last_message, sql_set_last_message, sql_get_language, sql_change_language
+    from func import parsing_links, translate_to_bel, parsing_pdf, parsing, get_data, download_pdf, pdf_to_png, current_hour, get_shedule_id, cheak_link_hash, current_time
 else:
     from .sql import sql_user, sql_statistics, sql_get_last_message, sql_set_last_message, sql_get_language, sql_change_language
+    from .func import parsing_links, translate_to_bel, parsing_pdf, parsing, get_data, download_pdf, pdf_to_png, current_hour, get_shedule_id, cheak_link_hash, current_time
 
 
 message_text = {
@@ -39,121 +34,8 @@ bot = Bot(bot_token)
 dp = Dispatcher()
 
 
-def parsing_links():
-    root_link = 'https://philology.bsu.by'
-    raspisanie_link = f'{root_link}/ru/studjentu/raspisanie'
 
-    text = requests.get(raspisanie_link, verify=False).text
-    soup = BeautifulSoup(text, "html.parser")
-
-    links = {}
-
-    for a_tag in soup.find_all('a', href=True):
-        link = root_link + a_tag['href']
-        text = a_tag.get_text(strip=True)
-
-        if 'raspisanie/' in link:  # логично и просто
-            links[text] = link
-
-    return links
-
-
-def translate_to_bel(text: str) -> str:
-    try:
-        return GoogleTranslator(source='ru', target='be').translate(text)
-    except Exception as e:
-        return text
-    
-
-def parsing_pdf(link):
-
-    text = requests.get(link, verify=False).text
-    soup = BeautifulSoup(text, 'html.parser')
-
-    pdf_links = []
-
-    for p_tag in soup.find_all('p'):  # проходимся по специальностям
-
-        strong_tag = p_tag.find('strong')
-        if strong_tag:
-
-            specialty = strong_tag.get_text(strip=True).split('(')[0]
-
-            temp_links = {}
-            for a_tag in p_tag.find_all('a', href=True):  # по курсам
-                pdf_link = a_tag['href']
-                text = a_tag.get_text(strip=True)
-                temp_links[text] = pdf_link
-
-            if temp_links:
-                pdf_links.append({'ru_name': specialty, 'bel_name': translate_to_bel(specialty), 'content': temp_links})
-
-    return pdf_links
-    
-
-def parsing():
-    result = {}
-
-    links = parsing_links()
-
-    for name, link in links.items():
-        pdfs = parsing_pdf(link)
-
-        if pdfs:
-            hash_name = hashlib.md5(name.encode('utf-8')).hexdigest()
-
-            result[hash_name] = {
-                'ru_name': name,
-                'bel_name': translate_to_bel(name),
-                'content': pdfs
-            }
-
-    path = os.path.join(os.path.dirname(__file__), 'data.json')
-    with open(path, 'w', encoding='utf-8') as json_file:
-        json.dump(result, json_file, ensure_ascii=False)
-    
-    print(f'Расписание было обновленно в {current_time()}. Длина: {len(result)}')
-
-    return result
-
-
-'''
-{
-    "d500510e6b9dc0689177a9a1a94b5d67": {
-        "ru_name": "Расписание занятий студентов дневного отделения (І семестр) 2024-2025",
-        "bel_name": "Расклад заняткаў студэнтаў дзённага аддзялення (І семестр) 2024-2025",
-        "content": [
-            {
-                "ru_name": "Специальность \"Белорусская филология\" ",
-                "bel_name": "Спецыяльнасць \"Беларуская філалогія\"",
-                "content": {
-                    "1 курс": "/files/dnevnoe/raspisanie/1_bel.pdf",
-                    ...
-                }
-            },
-            ...
-        ],
-        ...
-    },
-    ...
-}
-'''
-
-
-def get_data(json_name: str = 'data.json') -> dict:
-    path = os.path.join(os.path.dirname(__file__), json_name)
-
-    if not(os.path.exists(path)) or os.path.getsize(path) == 0:
-        parsing()
-
-    with open(path, 'r', encoding='utf-8') as file:
-        data = json.load(file)
-
-    return data
-        
-
-
-def start_inline_keyboard(language: int = 0):  # TODO: обработка. Проверка на .pdf
+def start_inline_keyboard(language: int = 0):
     language = 'bel_name' if language else 'ru_name'
     data = get_data()
 
@@ -198,12 +80,6 @@ def inline_keyboard_by_hash(hashed_text: str, language: int = 0):
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
-def current_time():
-    delta = datetime.timedelta(hours=3, minutes=0)
-    current_time = datetime.datetime.now(datetime.timezone.utc) + delta
-    return current_time.strftime("%H:%M:%S %d.%m.%Y")
-
-
 @dp.message(CommandStart())  # Вызывает меню выбора
 async def command_start_handler(message: Message) -> None:
     sql_user(name=message.from_user.full_name, username=str(message.from_user.username), user_id=message.from_user.id, chat_id=message.chat.id)
@@ -237,48 +113,6 @@ async def command_language(message: Message) -> None:
 
 
 
-def downdload_pdf(link: str) -> str | bool:
-    
-    try:
-        if not link.startswith('https:/'):
-            root_link = 'https://philology.bsu.by/'
-            link = root_link + link
-
-
-        response = requests.get(link, verify=False)
-
-        file_name = '_'.join(link.split('/')[-3:])  # https://philology.bsu.by/files/dnevnoe/raspisanie/4_rom-germ.pdf >>> dnevnoe_raspisanie_4_rom-germ.pdf
-
-        with open(file_name, 'wb') as file:
-            file.write(response.content)
-
-        return file_name
-    
-    except Exception as e:
-        print(e, link)
-        return False
-
-
-def pdf_to_png(pdf_path: str) -> list[str]:
-    file_name = pdf_path[:-4]
-    doc = fitz.open(pdf_path)
-    photos = []
-    count = len(doc)
-    n = 2  # качество страниц
-        
-    for i in range(count):
-        page = doc.load_page(i)
-        pix = page.get_pixmap(matrix=fitz.Matrix(n, n))
-        temp_file_name = f"{file_name}_{i}.png"
-        pix.save(temp_file_name)
-        photos.append(temp_file_name)
-
-    doc.close()
-
-    return photos
-
-
-
 @dp.callback_query(F.data)
 async def callback_data(callback: types.CallbackQuery):
     data = callback.data
@@ -288,7 +122,7 @@ async def callback_data(callback: types.CallbackQuery):
     if data.endswith('.pdf'):
         sql_set_last_message(callback.from_user.id, data)
 
-        file_name = downdload_pdf(data)
+        file_name = download_pdf(data)
         if file_name:
             images = pdf_to_png(file_name)
             photo_name = file_name[:-4]
@@ -308,7 +142,10 @@ async def callback_data(callback: types.CallbackQuery):
                     'Націсніце на кнопку або адпраўце любое паведамленне, каб абнавіць расклад'][language]
             await bot.send_message(callback.from_user.id, text=text, reply_markup=inline_keyboard)
 
-            os.remove(file_name)
+            try:
+                os.remove(file_name)
+            except:
+                print(f'Error deleting {file_name}. Callback')
             for i in range(len(images)):
                 os.remove(f'{photo_name}_{i}.png')
 
@@ -350,7 +187,7 @@ async def main_handler(message: types.Message) -> None:
         await message.answer(['Ваше сохраненное расписание не обнаружено. Скорее всего, админ сбросил базу данных. Используйте команду /start и заново выберите расписание',
                               'Ваш захаваны расклад не выяўлены. Хутчэй за ўсё, адмін скінуў базу дадзеных. Выкарыстоўвайце каманду /start і зноўку абярыце расклад'][language])
     else:
-        file_name = downdload_pdf(link)
+        file_name = download_pdf(link)
         if file_name:
             images = pdf_to_png(file_name)
             photo_name = file_name[:-4]
@@ -369,8 +206,11 @@ async def main_handler(message: types.Message) -> None:
             text = ['Нажмите на кнопку или отправьте любое сообщение, что бы обновить расписание',
                     'Націсніце на кнопку або адпраўце любое паведамленне, каб абнавіць расклад'][language]
             await bot.send_message(message.from_user.id, text=text, reply_markup=inline_keyboard)
-
-            os.remove(file_name)
+            
+            try:
+                os.remove(file_name)
+            except:
+                print(f'Error deleting {file_name}. message')
             for i in range(len(images)):
                 os.remove(f'{photo_name}_{i}.png')
 
@@ -390,13 +230,46 @@ async def periodic_parsing(): # Запуск парсинга раз в 24 ча�
         parsing()
         await asyncio.sleep(24*60*60)
 
+async def scheduler():
+    links = cheak_link_hash()
+    print(f'Sheduler. time={current_time()} link={links}')
+    for link in links:
+        ids = get_shedule_id(link)
+        file_name = download_pdf(link)
+        print(f'link={link} ids={ids}' + ('' if file_name else ' file_name=False'))
+        if file_name:
+            images = pdf_to_png(file_name)
+            photo_name = file_name[:-4]
+            n = len(images) if len(images) <= 10 else 10
+            files = []
+            caption = 'Тест рассылки'
+            for i in range(n):
+                files.append(InputMediaPhoto(media=FSInputFile(f"{photo_name}_{i}.png"), caption=caption if i == 0 else None))
+            for id in ids:
+                await bot.send_media_group(id, media=files)
+        
+            os.remove(file_name)
+
+
+async def periodic_scheduler():
+    while True:
+        hour = current_hour()
+
+        if 7 <= hour < 22:
+            await scheduler()
+        
+        await asyncio.sleep(60*60*60)
+            
+        
+
 
 async def main():
     await asyncio.gather(
-        run_polling(),
-        periodic_parsing()
+        periodic_parsing(),
+        periodic_scheduler()
     )
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    print('Start')
+    dp.run_polling(bot, skip_updates=True)
