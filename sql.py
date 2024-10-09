@@ -1,4 +1,5 @@
 import sqlite3
+import matplotlib.pyplot as plt
 import datetime
 
 
@@ -145,6 +146,113 @@ def sql_change_language(user_id):
     connection.commit()
     connection.close()
     return new_language
+
+
+
+def requests_by_hours() -> str:
+    connection = sqlite3.connect('bsu_database.db')
+    cursor = connection.cursor()
+    cursor.execute("SELECT time FROM statistics")
+
+    hours = [int(time[0].split(':')[0]) for time in cursor.fetchall()][-10**5:]
+
+    dict_of_time = {i: hours.count(i) for i in range(24)}
+
+    labels = list(dict_of_time.keys())
+    values = list(dict_of_time.values())
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    ax.set_title("Запросы по часам")
+    ax.set_xlabel("Часы")
+    ax.set_ylabel("Запросы")
+
+    bars = ax.bar(labels, values)
+
+    for bar in bars:
+        bar_value = bar.get_height()
+        bar_x = bar.get_x() + bar.get_width() / 2
+        bar_y = bar_value
+
+        value_label = f"{int(bar_value)}"
+
+        ax.annotate(
+            value_label,
+            xy=(bar_x, bar_y),
+            xytext=(0, 5),
+            textcoords="offset points",
+            ha="center",
+        )
+
+    plt.savefig("requests_by_hours.png")
+    connection.close()
+
+    return "requests_by_hours.png"
+    
+        
+def create_specialty(title, subplots):
+    return {
+        'title': title,
+        'subplots': subplots,
+        '1': 0,
+        '2': 0,
+        '3': 0,
+        '4': 0
+    }
+
+
+def by_specialty_and_course():
+    connection = sqlite3.connect('bsu_database.db')
+    cursor = connection.cursor()
+    cursor.execute("SELECT pdf_link FROM statistics")
+
+    plt.figure(figsize=(12, 7))
+
+    specialties_data = [
+    ('Романо-германская филология', [3, 2, 1]),
+    ('Славянская филология', [3, 2, 2]),
+    ('Восточная филология', [3, 2, 3]),
+    ('Русская филология', [3, 2, 4]),
+    ('Классическая филология', [3, 2, 5]),
+    ('Белорусская филология', [3, 2, 6]),
+    ]
+
+    specialty = {key: create_specialty(title, subplots) for key, (title, subplots) in zip(
+        ['rom-germ', 'slav', 'vost', 'rus', 'klassiki', 'bel'], specialties_data)}
+
+    """
+    'rom-germ': {
+        'title': 'Романо-германская филология',
+        'subplots': [3, 2, 1],
+        '1': 0,
+        '2': 0,
+        '3': 0,
+        '4': 0
+    }
+    """
+    
+    links = [i[0] for i in cursor.fetchall()[-10**5:]]
+
+
+    # .split('_')[-1][:-4]: 3_rom-germ.pdf -> [3, 'rom-germ.pdf'] -> 'rom-germ.pdf', 'rom-germ'
+    # .split('/')[-1][0]: .../3_rom-germ.pdf -> ['...', '3_rom-germ.pdf'] -> 3_rom-germ.pdf -> 3
+    for spec, curse in zip(links, links):
+        if spec.endswith('.pdf'):
+            specialty[spec.split('_')[-1][:-4]][curse.split('/')[-1][0]] += 1
+
+    subplot_index = 1
+    for spec_data in specialty.values():
+        plt.subplot(2, 3, subplot_index)
+        plt.title(spec_data['title'])
+        plt.bar(x=['1 курс', '2 курс', '3 курс', '4 курс'], height=[spec_data['1'], spec_data['2'], spec_data['3'], spec_data['4']], label=spec_data['title'])
+        subplot_index += 1
+
+    plt.tight_layout()
+
+    plt.savefig("by_specialty_and_course.png")
+    connection.close()
+
+    return "by_specialty_and_course.png"
 
 
 sql_launch()
