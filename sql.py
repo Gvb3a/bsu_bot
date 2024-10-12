@@ -1,4 +1,6 @@
+from os import times
 import sqlite3
+import time
 import matplotlib.pyplot as plt
 import datetime
 
@@ -226,12 +228,10 @@ def by_specialty_and_course():
     specialty = {key: create_specialty(title) for key, title in zip(
         ['rom-germ', 'slav', 'vost', 'rus', 'klassiki', 'bel'], specialties)}
 
-    # Получаем данные и ограничиваем выборку
     rows = cursor.fetchall()[-10**5:]
     links = [row[0] for row in rows]
     autos = [row[1] for row in rows]
 
-    # Обрабатываем данные
     for spec, is_auto in zip(links, autos):
         if spec.endswith('.pdf'):
             spec_name = spec.split('_')[-1][:-4]
@@ -242,7 +242,6 @@ def by_specialty_and_course():
             else:
                 specialty[spec_name][curse_name][0] += 1
 
-    # Создаем графики
     subplot_index = 1
     for spec_data in specialty.values():
         plt.subplot(2, 3, subplot_index)
@@ -266,6 +265,45 @@ def by_specialty_and_course():
     connection.close()
 
     return "by_specialty_and_course.png"
+
+
+def last_30_days():
+    connection = sqlite3.connect('bsu_database.db')
+    cursor = connection.cursor()
+    cursor.execute("SELECT time FROM statistics")
+
+    time = [time[0].split()[1] for time in cursor.fetchall()[-10**5:]]
+
+    sorted_dates = sorted(list(set(time))[-30:])
+    dict_of_time = {date.split('.')[0]: time.count(date) for date in sorted_dates}
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ax.set_title("Запросы за последние 30 дней")
+    bars = ax.bar(dict_of_time.keys(), dict_of_time.values())
+
+    for bar in bars:
+        bar_value = bar.get_height()
+        bar_x = bar.get_x() + bar.get_width() / 2
+        bar_y = bar_value
+
+        value_label = f"{int(bar_value)}"
+
+        ax.annotate(
+            value_label,
+            xy=(bar_x, bar_y),
+            xytext=(0, 5),
+            textcoords="offset points",
+            ha="center",
+        )
+
+    connection.close()
+    plt.savefig('last_30_days.png')
+
+    return 'last_30_days.png'
+
+
+def all_plot() -> list[str]:
+    return [last_30_days(), by_specialty_and_course(), requests_by_hours()]
 
 
 sql_launch()

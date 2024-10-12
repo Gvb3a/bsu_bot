@@ -11,10 +11,10 @@ from aiogram.types import InputMediaPhoto, Message, CallbackQuery, FSInputFile, 
 
 
 if __name__ == '__main__' or '.' not in __name__:
-    from sql import sql_user, sql_statistics, sql_get_last_message, sql_set_last_message, sql_get_language, sql_change_language
+    from sql import sql_user, sql_statistics, sql_get_last_message, sql_set_last_message, sql_get_language, sql_change_language, all_plot
     from func import parsing, get_data, download_pdf, pdf_to_png, get_shedule_id, remove_id_by_shedule, remove_id_form_all_shedule, add_schedule_link_or_id, cheak_link_hash, current_time, sql_statistics_by_id
 else:
-    from .sql import sql_user, sql_statistics, sql_get_last_message, sql_set_last_message, sql_get_language, sql_change_language
+    from .sql import sql_user, sql_statistics, sql_get_last_message, sql_set_last_message, sql_get_language, sql_change_language, all_plot
     from .func import parsing, get_data, download_pdf, pdf_to_png, get_shedule_id, remove_id_by_shedule, remove_id_form_all_shedule, add_schedule_link_or_id, cheak_link_hash, current_time, sql_statistics_by_id
 
 
@@ -120,6 +120,15 @@ async def command_cancel_auto_update(message: Message) -> None:
     await message.answer(text=text)
     print(f'User {message.from_user.full_name} canceled all auto update')
 
+
+@dp.message(Command('stat')) 
+async def command_statistic(message: Message) -> None:
+    images = all_plot()
+    files = [InputMediaPhoto(media=FSInputFile(file_name)) for file_name in images]
+    await bot.send_media_group(message.from_user.id, media=files)
+    print(f'User {message.from_user.full_name} send \statistic')
+    for file_name in images:
+        os.remove(file_name)
 
 
 @dp.callback_query(F.data)
