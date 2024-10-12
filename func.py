@@ -9,6 +9,8 @@ from deep_translator import GoogleTranslator
 from urllib3 import disable_warnings
 import hashlib
 
+from sql import sql_statistics_by_id
+
 disable_warnings()  # Сайт БГУ не безопасен
 
 
@@ -241,7 +243,7 @@ def add_schedule_link_or_id(link: str, id: int) -> bool:
     return True
 
 
-def remove_shedule_id(link: str, id: int):
+def remove_id_by_shedule(link: str, id: int):
     file_path = 'schedule_links.json'
     cheak_schedule_file()
     with open(file_path, 'r', encoding='utf-8') as json_file:
@@ -274,6 +276,30 @@ def remove_shedule_id(link: str, id: int):
     else:
         print(f'1 id({id}) for {link}. delete link')
 
+
+    with open(file_path, 'w', encoding='utf-8') as json_file:
+        json.dump(result, json_file, ensure_ascii=False)
+
+
+def remove_id_form_all_shedule(id: int) -> None:
+    file_path = 'schedule_links.json'
+    cheak_schedule_file()
+    with open(file_path, 'r', encoding='utf-8') as json_file:
+        schedule_links = json.load(json_file)
+
+    result = schedule_links.copy()
+
+    for link in schedule_links.keys():
+        if id in schedule_links[link]['id']:
+            if len(schedule_links[link]['id']) > 1:
+                id_list = schedule_links[link]['id']
+                del id_list[id_list.index(id)]
+                result[link] = {
+                    'hash': schedule_links[link]['hash'],
+                    'id': id_list
+                }
+            else:
+                del result[link]
 
     with open(file_path, 'w', encoding='utf-8') as json_file:
         json.dump(result, json_file, ensure_ascii=False)
@@ -320,3 +346,4 @@ def cheak_link_hash() -> list:
     return link_to_update
 
 
+sql_statistics_by_id(2117601484, '/files/dnevnoe/raspisanie/3_rom-germ.pdf', 1)

@@ -1,9 +1,6 @@
-
-from math import e
 import os
 import asyncio
 
-from librosa import ex
 from urllib3 import disable_warnings
 from colorama import init, Fore, Style
 from dotenv import load_dotenv
@@ -15,14 +12,14 @@ from aiogram.types import InputMediaPhoto, Message, CallbackQuery, FSInputFile, 
 
 if __name__ == '__main__' or '.' not in __name__:
     from sql import sql_user, sql_statistics, sql_get_last_message, sql_set_last_message, sql_get_language, sql_change_language
-    from func import parsing_links, translate_to_bel, parsing_pdf, parsing, get_data, download_pdf, pdf_to_png, current_hour, get_shedule_id, cheak_link_hash, current_time
+    from func import parsing, get_data, download_pdf, pdf_to_png, get_shedule_id, remove_id_by_shedule, remove_id_form_all_shedule, add_schedule_link_or_id, cheak_link_hash, current_time, sql_statistics_by_id
 else:
     from .sql import sql_user, sql_statistics, sql_get_last_message, sql_set_last_message, sql_get_language, sql_change_language
-    from .func import parsing_links, translate_to_bel, parsing_pdf, parsing, get_data, download_pdf, pdf_to_png, current_hour, get_shedule_id, cheak_link_hash, current_time
+    from .func import parsing, get_data, download_pdf, pdf_to_png, get_shedule_id, remove_id_by_shedule, remove_id_form_all_shedule, add_schedule_link_or_id, cheak_link_hash, current_time, sql_statistics_by_id
 
 
 message_text = {
-    'start_message': ['Выберете расписание', 'Абярыце расклад']
+    'start_message': ['Выберите расписание. После выбора можно настроить автоматическое обновление', 'Абярыце расклад. Пасля выбару можна настроіць аўтаматычнае абнаўленне']
 }
 
 
@@ -85,6 +82,7 @@ async def command_start_handler(message: Message) -> None:
     sql_user(name=message.from_user.full_name, username=str(message.from_user.username), user_id=message.from_user.id, chat_id=message.chat.id)
     language = sql_get_language(message.from_user.id)
     await message.answer(text=message_text['start_message'][language], reply_markup=start_inline_keyboard(language))
+    print(f'User {message.from_user.full_name} send start command')
 
 
 @dp.callback_query(F.data == 'decorative_button')  # реакция, при нажатии на декоративные кнопки
@@ -103,13 +101,24 @@ async def inline_back_handler(callback: CallbackQuery):
     await callback.answer()
 
 
-@dp.message(Command('language'))  # Обработчик команды /language
+@dp.message(Command('language'))  # Обработчик команды /language. Меняет язык
 async def command_language(message: Message) -> None:
     sql_user(name=message.from_user.full_name, username=str(message.from_user.username), user_id=message.from_user.id, chat_id=message.chat.id)
     language = sql_change_language(message.from_user.id)
     text = ['Язык был изменен', 'Мова была зменена'][language]
     await message.answer(text=text)
+    print(f'User {message.from_user.full_name} changed language')
 
+
+@dp.message(Command('cancel_auto_update'))  # Отменить авто обновление
+async def command_cancel_auto_update(message: Message) -> None:
+    user_id = message.from_user.id
+    remove_id_form_all_shedule(message.from_user.id)
+    sql_user(name=message.from_user.full_name, username=str(message.from_user.username), user_id=user_id, chat_id=message.chat.id)
+    language = sql_get_language(user_id)
+    text = ['Все автоматические обновления отменены', 'Усе аўтаматычныя абнаўленні адменены'][language]
+    await message.answer(text=text)
+    print(f'User {message.from_user.full_name} canceled all auto update')
 
 
 
@@ -129,7 +138,8 @@ async def callback_data(callback: types.CallbackQuery):
 
             inline_update = InlineKeyboardButton(text=['Обновить', 'Аднавіць'][language], callback_data=data)
             inline_back = InlineKeyboardButton(text='Меню', callback_data='back')
-            inline_keyboard = InlineKeyboardMarkup(inline_keyboard=[[inline_update], [inline_back]])
+            inline_on_auto = InlineKeyboardButton(text=['Включить автообновление', 'Уключыць аўтаабнаўленне'][language], callback_data=f'{data}-auto_up')
+            inline_keyboard = InlineKeyboardMarkup(inline_keyboard=[[inline_update], [inline_on_auto], [inline_back]])
 
             n = len(images) if len(images) <= 10 else 10
             files = []
@@ -155,7 +165,24 @@ async def callback_data(callback: types.CallbackQuery):
 
         sql_statistics(name=callback.from_user.full_name, link=data, auto=0)
 
+    
+    elif data.endswith('-auto_up'):
 
+        link = data[:-8]
+
+        add_schedule_link_or_id(link, callback.from_user.id)
+
+        text = ['Автоматическое обновление включено. Бот будет проверять расписание и, если оно изменится, отправит его вам. Для отмены отправьте /cancel_auto_update', 'Аўтаматычнае абнаўленне ўключана. Бот будзе правяраць расклад і, калі ён зменіцца, адправіць яго вам. Для адмены адпраўце /cancel_auto_update'][language]
+        await bot.send_message(callback.from_user.id, text)
+
+
+    elif data.endswith('-auto_down'):
+        remove_id_by_shedule(data[:-9], callback.from_user.id)
+
+        text = ['Автоматическое обновление выключено', 'Аўтаматычнае абнаўленне выключана'][language]
+        await bot.send_message(callback.from_user.id, text)
+
+        
     else:
         inline_keyboard = inline_keyboard_by_hash(data, language)
 
@@ -166,13 +193,13 @@ async def callback_data(callback: types.CallbackQuery):
             try:
                 await callback.message.edit_text(text=text, reply_markup=inline_keyboard)
             except:
-                await callback.answer(['Ошибка. Если вы не можете получитить доступ к чему-то важному, то свяжитесь с администратором.', 'Памылка. Калі вы не можаце атрымаць доступ да чагосьці важнага, то звяжыцеся з адміністратарам.'][language])
+                await callback.answer(['Ошибка. Попробуйте еще раз. Если это не поможет и вы не можете получитить доступ к чему-то важному, то свяжитесь с администратором.', 'Памылка. Паспрабуйце яшчэ раз. Калі гэта не дапаможа і вы не можаце атрымаць доступ да чагосьці важнага, то звяжыцеся з адміністратарам.'][language])
         else:
-            text = ['Ошибка при поиске расписания. Отправьте команду /start и попробуйте еще раз. Если не поможет, то обратитись к администратору', 'Памылка пры пошуку раскладу. Адпраўце каманду /start і паспрабуйце яшчэ раз. Калі не дапаможа, звернецеся да адміністратара'][language]
+            text = ['Ошибка при поиске расписания. Отправьте команду /start и попробуйте еще раз. Если не поможет, то обратитись к администратору.', 'Памылка пры пошуку раскладу. Адпраўце каманду /start і паспрабуйце яшчэ раз. Калі не дапаможа, звернецеся да адміністратара.'][language]
             await callback.answer(text=text)
 
         
-
+    print(f'User {callback.from_user.full_name} clicked {callback.data}')
     await callback.answer()
 
 
@@ -194,7 +221,8 @@ async def main_handler(message: types.Message) -> None:
 
             inline_update = InlineKeyboardButton(text=['Обновить', 'Аднавіць'][language], callback_data=link)
             inline_back = InlineKeyboardButton(text='Меню', callback_data='back')
-            inline_keyboard = InlineKeyboardMarkup(inline_keyboard=[[inline_update], [inline_back]])
+            inline_on_auto = InlineKeyboardButton(text=['Включить автообновление', 'Уключыць аўтаабнаўленне'][language], callback_data=f'{link}-auto_up')
+            inline_keyboard = InlineKeyboardMarkup(inline_keyboard=[[inline_update], [inline_on_auto], [inline_back]])
 
             n = len(images) if len(images) <= 10 else 10
             files = []
@@ -217,18 +245,14 @@ async def main_handler(message: types.Message) -> None:
         else:
             text = ['Ошибка 404. Страница не найдена', 'Памылка 404. Старонка не знойдзена'][language]
             await bot.send_message(message.from_user.id, text)
-
+    
+    print(f'User {message.from_user.full_name} send message ({link})')
     sql_statistics(name=message.from_user.full_name, link=link, auto=0)
 
 
 async def run_polling():
     await dp.start_polling(bot, skip_updates=True)
 
-
-async def periodic_parsing(): # Запуск парсинга раз в 24 часа
-    while True:
-        parsing()
-        await asyncio.sleep(24*60*60)
 
 async def scheduler():
     links = cheak_link_hash()
@@ -242,32 +266,16 @@ async def scheduler():
             photo_name = file_name[:-4]
             n = len(images) if len(images) <= 10 else 10
             files = []
-            caption = 'Тест рассылки'
             for i in range(n):
-                files.append(InputMediaPhoto(media=FSInputFile(f"{photo_name}_{i}.png"), caption=caption if i == 0 else None))
+                files.append(InputMediaPhoto(media=FSInputFile(f"{photo_name}_{i}.png")))
             for id in ids:
-                await bot.send_media_group(id, media=files)
+                try:
+                    await bot.send_media_group(id, media=files)
+                    sql_statistics_by_id(id=id, link=link, auto=1)
+                except Exception as e:
+                    print(f'Error sending {link} to {id}. Error: {e}')
         
             os.remove(file_name)
-
-
-async def periodic_scheduler():
-    while True:
-        hour = current_hour()
-
-        if 7 <= hour < 22:
-            await scheduler()
-        
-        await asyncio.sleep(60*60*60)
-            
-        
-
-
-async def main():
-    await asyncio.gather(
-        periodic_parsing(),
-        periodic_scheduler()
-    )
 
 
 if __name__ == '__main__':

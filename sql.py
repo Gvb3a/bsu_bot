@@ -90,6 +90,19 @@ def sql_statistics(name: str, link: str, auto: int = 0) -> None:
     connection.close()
 
 
+def sql_statistics_by_id(id: int, link: str, auto: int = 1) -> None:
+    connection = sqlite3.connect('bsu_database.db')
+    cursor = connection.cursor()
+
+    cursor.execute(f"SELECT name FROM user WHERE id = {id}")
+    name = cursor.fetchone()[0]
+
+    cursor.execute(f"INSERT INTO statistics(name, pdf_link, auto, time) VALUES (?, ?, ?, ?)", (name, link, auto, current_time()))
+
+    connection.commit()
+    connection.close()
+
+
 def sql_get_last_message(user_id: int) -> str | bool:
     connection = sqlite3.connect('bsu_database.db')
     cursor = connection.cursor()
@@ -190,61 +203,61 @@ def requests_by_hours() -> str:
     return "requests_by_hours.png"
     
         
-def create_specialty(title, subplots):
+def create_specialty(title):
     return {
         'title': title,
-        'subplots': subplots,
-        '1': 0,
-        '2': 0,
-        '3': 0,
-        '4': 0
+        '1': [0, 0],  # [без авто, с авто]
+        '2': [0, 0],
+        '3': [0, 0],
+        '4': [0, 0]
     }
 
 
 def by_specialty_and_course():
     connection = sqlite3.connect('bsu_database.db')
     cursor = connection.cursor()
-    cursor.execute("SELECT pdf_link FROM statistics")
+    cursor.execute("SELECT pdf_link, auto FROM statistics")
 
     plt.figure(figsize=(12, 7))
 
-    specialties_data = [
-    ('Романо-германская филология', [3, 2, 1]),
-    ('Славянская филология', [3, 2, 2]),
-    ('Восточная филология', [3, 2, 3]),
-    ('Русская филология', [3, 2, 4]),
-    ('Классическая филология', [3, 2, 5]),
-    ('Белорусская филология', [3, 2, 6]),
-    ]
+    specialties = ['Романо-германская филология', 'Славянская филология', 'Восточная филология', 
+                   'Русская филология', 'Классическая филология', 'Белорусская филология']
 
-    specialty = {key: create_specialty(title, subplots) for key, (title, subplots) in zip(
-        ['rom-germ', 'slav', 'vost', 'rus', 'klassiki', 'bel'], specialties_data)}
+    specialty = {key: create_specialty(title) for key, title in zip(
+        ['rom-germ', 'slav', 'vost', 'rus', 'klassiki', 'bel'], specialties)}
 
-    """
-    'rom-germ': {
-        'title': 'Романо-германская филология',
-        'subplots': [3, 2, 1],
-        '1': 0,
-        '2': 0,
-        '3': 0,
-        '4': 0
-    }
-    """
-    
-    links = [i[0] for i in cursor.fetchall()[-10**5:]]
+    # Получаем данные и ограничиваем выборку
+    rows = cursor.fetchall()[-10**5:]
+    links = [row[0] for row in rows]
+    autos = [row[1] for row in rows]
 
-
-    # .split('_')[-1][:-4]: 3_rom-germ.pdf -> [3, 'rom-germ.pdf'] -> 'rom-germ.pdf', 'rom-germ'
-    # .split('/')[-1][0]: .../3_rom-germ.pdf -> ['...', '3_rom-germ.pdf'] -> 3_rom-germ.pdf -> 3
-    for spec, curse in zip(links, links):
+    # Обрабатываем данные
+    for spec, is_auto in zip(links, autos):
         if spec.endswith('.pdf'):
-            specialty[spec.split('_')[-1][:-4]][curse.split('/')[-1][0]] += 1
+            spec_name = spec.split('_')[-1][:-4]
+            curse_name = spec.split('/')[-1][0]
 
+            if is_auto:
+                specialty[spec_name][curse_name][1] += 1
+            else:
+                specialty[spec_name][curse_name][0] += 1
+
+    # Создаем графики
     subplot_index = 1
     for spec_data in specialty.values():
         plt.subplot(2, 3, subplot_index)
-        plt.title(spec_data['title'])
-        plt.bar(x=['1 курс', '2 курс', '3 курс', '4 курс'], height=[spec_data['1'], spec_data['2'], spec_data['3'], spec_data['4']], label=spec_data['title'])
+        sm = sum(sum(value) for key, value in spec_data.items() if key != 'title')
+        plt.title(f"{spec_data['title']} ({sm})")
+
+        y_auto = [spec_data['1'][1], spec_data['2'][1], spec_data['3'][1], spec_data['4'][1]]
+        y_no_auto = [spec_data['1'][0], spec_data['2'][0], spec_data['3'][0], spec_data['4'][0]]
+
+        x = ['1 курс', '2 курс', '3 курс', '4 курс']
+
+        plt.bar(x, y_auto, label='Авто', color='#ff7f0e')
+        plt.bar(x, y_no_auto, bottom=y_auto, label='Не авто', color='#1f77b4')
+        
+        plt.legend()
         subplot_index += 1
 
     plt.tight_layout()
