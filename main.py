@@ -12,10 +12,12 @@ from aiogram.types import InputMediaPhoto, Message, CallbackQuery, FSInputFile, 
 
 if __name__ == '__main__' or '.' not in __name__:
     from sql import sql_user, sql_statistics, sql_get_last_message, sql_set_last_message, sql_get_language, sql_change_language, all_plot
-    from func import parsing, get_data, download_pdf, pdf_to_png, get_shedule_id, remove_id_by_shedule, remove_id_form_all_shedule, add_schedule_link_or_id, cheak_link_hash, current_time, sql_statistics_by_id
+    from func import parsing, get_data, download_pdf, pdf_to_png, get_shedule_id, remove_id_by_shedule, remove_id_form_all_shedule, add_schedule_link_or_id, cheak_link_hash, current_time, sql_statistics_by_id, parsing_text_for_url
+    from log import log
 else:
     from .sql import sql_user, sql_statistics, sql_get_last_message, sql_set_last_message, sql_get_language, sql_change_language, all_plot
-    from .func import parsing, get_data, download_pdf, pdf_to_png, get_shedule_id, remove_id_by_shedule, remove_id_form_all_shedule, add_schedule_link_or_id, cheak_link_hash, current_time, sql_statistics_by_id
+    from .func import parsing, get_data, download_pdf, pdf_to_png, get_shedule_id, remove_id_by_shedule, remove_id_form_all_shedule, add_schedule_link_or_id, cheak_link_hash, current_time, sql_statistics_by_id, parsing_text_for_url
+    from .log import log
 
 
 message_text = {
@@ -82,7 +84,7 @@ async def command_start_handler(message: Message) -> None:
     sql_user(name=message.from_user.full_name, username=str(message.from_user.username), user_id=message.from_user.id, chat_id=message.chat.id)
     language = sql_get_language(message.from_user.id)
     await message.answer(text=message_text['start_message'][language], reply_markup=start_inline_keyboard(language))
-    print(f'User {message.from_user.full_name} send start command')
+    log(message_green='start command', message=f'User {message.from_user.full_name} send start command')
 
 
 @dp.callback_query(F.data == 'decorative_button')  # реакция, при нажатии на декоративные кнопки
@@ -107,7 +109,7 @@ async def command_language(message: Message) -> None:
     language = sql_change_language(message.from_user.id)
     text = ['Язык был изменен', 'Мова была зменена'][language]
     await message.answer(text=text)
-    print(f'User {message.from_user.full_name} changed language')
+    log('language', f'User {message.from_user.full_name} changed language')
 
 
 @dp.message(Command('cancel_auto_update'))  # Отменить авто обновление
@@ -118,7 +120,7 @@ async def command_cancel_auto_update(message: Message) -> None:
     language = sql_get_language(user_id)
     text = ['Все автоматические обновления отменены', 'Усе аўтаматычныя абнаўленні адменены'][language]
     await message.answer(text=text)
-    print(f'User {message.from_user.full_name} canceled all auto update')
+    log('cancel_auto_update', f'User {message.from_user.full_name} canceled all auto update')
 
 
 @dp.message(Command('stat')) 
@@ -126,7 +128,7 @@ async def command_statistic(message: Message) -> None:
     images = all_plot()
     files = [InputMediaPhoto(media=FSInputFile(file_name)) for file_name in images]
     await bot.send_media_group(message.from_user.id, media=files)
-    print(f'User {message.from_user.full_name} send \statistic')
+    log('stat', f'User {message.from_user.full_name} send \stat')
     for file_name in images:
         os.remove(file_name)
 
@@ -163,10 +165,10 @@ async def callback_data(callback: types.CallbackQuery):
 
             try:
                 os.remove(file_name)
-            except:
-                print(f'Error deleting {file_name}. Callback')
-            for i in range(len(images)):
-                os.remove(f'{photo_name}_{i}.png')
+                for i in range(len(images)):
+                    os.remove(f'{photo_name}_{i}.png')
+            except Exception as e:
+                log(f'Error deleting {file_name}', f'Callback. {e}', error=True)
 
         else:
             text = ['Ошибка 404. Страница не найдена', 'Памылка 404. Старонка не знойдзена'][language]
@@ -207,10 +209,22 @@ async def callback_data(callback: types.CallbackQuery):
             text = ['Ошибка при поиске расписания. Отправьте команду /start и попробуйте еще раз. Если не поможет, то обратитись к администратору.', 'Памылка пры пошуку раскладу. Адпраўце каманду /start і паспрабуйце яшчэ раз. Калі не дапаможа, звернецеся да адміністратара.'][language]
             await callback.answer(text=text)
 
-        
-    print(f'User {callback.from_user.full_name} clicked {callback.data}')
+    log('Callback click', f'date: {callback.data}, user {callback.from_user.full_name}')
     await callback.answer()
 
+
+@dp.message(F.text.startswith('https://studfile.net'))
+async def parsing_links(message: types.Message) -> None:
+    url = message.text
+    await message.reply('Копируем текст... Для добавления других ссылок или в случае возникновения ошибки обратитесь к [администратору](https://t.me/gvb3a).', parse_mode='Markdown', disable_web_page_preview=True)
+    parsing_text = parsing_text_for_url(url)
+    parsing_text = parsing_text.replace('\n\n', '\\'*10)
+    parsing_text = parsing_text.replace('\n', ' ')
+    parsing_text = parsing_text.replace('\\'*10, '\n\n')
+    while parsing_text:
+        await message.answer(parsing_text[:4090])
+        parsing_text = parsing_text[4090:]
+    log('parsing text for url', f'url: {url}, user: {message.from_user.full_name}')
 
 @dp.message()
 async def main_handler(message: types.Message) -> None:
@@ -246,16 +260,16 @@ async def main_handler(message: types.Message) -> None:
             
             try:
                 os.remove(file_name)
+                for i in range(len(images)):
+                    os.remove(f'{photo_name}_{i}.png')
             except:
-                print(f'Error deleting {file_name}. message')
-            for i in range(len(images)):
-                os.remove(f'{photo_name}_{i}.png')
+                print(f'Error with deleting {file_name}')
 
         else:
             text = ['Ошибка 404. Страница не найдена', 'Памылка 404. Старонка не знойдзена'][language]
             await bot.send_message(message.from_user.id, text)
     
-    print(f'User {message.from_user.full_name} send message ({link})')
+    log('message', f'link: {link}, user: {message.from_user.full_name}')
     sql_statistics(name=message.from_user.full_name, link=link, auto=0)
 
 
@@ -265,11 +279,11 @@ async def run_polling():
 
 async def scheduler():
     links = cheak_link_hash()
-    print(f'Sheduler. time={current_time()} link={links}')
+    log('Sheduler start', f'time={current_time()} link={links}')
     for link in links:
         ids = get_shedule_id(link)
         file_name = download_pdf(link)
-        print(f'link={link} ids={ids}' + ('' if file_name else ' file_name=False'))
+        log('Sduler send', f'link={link} ids={ids}' + ('' if file_name else ' file_name=False'))
         if file_name:
             images = pdf_to_png(file_name)
             photo_name = file_name[:-4]
@@ -282,11 +296,11 @@ async def scheduler():
                     await bot.send_media_group(id, media=files)
                     sql_statistics_by_id(id=id, link=link, auto=1)
                 except Exception as e:
-                    print(f'Error sending {link} to {id}. Error: {e}')
+                    log('Sheduler sending error', f'link: {link}, id: {id}, Error: {e}')
         
             os.remove(file_name)
 
 
 if __name__ == '__main__':
-    print('Start')
+    log('START ')
     dp.run_polling(bot, skip_updates=True)

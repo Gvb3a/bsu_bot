@@ -5,3 +5,4 @@ bsu_database.db
 .env
 .devdbrc
 *.json
+bsu.log

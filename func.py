@@ -8,10 +8,21 @@ from bs4 import BeautifulSoup
 from deep_translator import GoogleTranslator
 from urllib3 import disable_warnings
 import hashlib
+from tavily import TavilyClient
+from dotenv import load_dotenv
 
 from sql import sql_statistics_by_id
 
+if __name__ == '__main__' or '.' not in __name__:
+    from log import log
+else:
+    from .log import log
+
+
+load_dotenv()
 disable_warnings()  # Сайт БГУ не безопасен
+
+tavily_client = TavilyClient(api_key=os.getenv('TAVILY_API_KEY'))
 
 
 def parsing_links():
@@ -234,7 +245,7 @@ def add_schedule_link_or_id(link: str, id: int) -> bool:
 
 
         else:
-          print(f'add_schedule_link_or_id path error. link={link}, path={path}')
+          log('add_schedule_link_or_id path error', f'link={link}, path={path}', error=True)
           return False
 
     with open(file_path, 'w', encoding='utf-8') as json_file:
@@ -346,4 +357,10 @@ def cheak_link_hash() -> list:
     return link_to_update
 
 
-sql_statistics_by_id(2117601484, '/files/dnevnoe/raspisanie/3_rom-germ.pdf', 1)
+
+def parsing_text_for_url(url: str) -> str:
+    try:
+        return [r['raw_content'] for r in tavily_client.extract(urls=url)['results']][0]
+    except Exception as e:
+        return f'Error: {e}'
+    
