@@ -236,11 +236,13 @@ def by_specialty_and_course():
         if spec.endswith('.pdf'):
             spec_name = spec.split('_')[-1][:-4]
             curse_name = spec.split('/')[-1][0]
-
-            if is_auto:
-                specialty[spec_name][curse_name][1] += 1
-            else:
-                specialty[spec_name][curse_name][0] += 1
+            try:
+                if is_auto:
+                    specialty[spec_name][curse_name][1] += 1
+                else:
+                    specialty[spec_name][curse_name][0] += 1
+            except:
+                pass
 
     subplot_index = 1
     for spec_data in specialty.values():

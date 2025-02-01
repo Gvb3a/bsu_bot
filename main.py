@@ -128,7 +128,7 @@ async def command_statistic(message: Message) -> None:
     images = all_plot()
     files = [InputMediaPhoto(media=FSInputFile(file_name)) for file_name in images]
     await bot.send_media_group(message.from_user.id, media=files)
-    log('stat', f'User {message.from_user.full_name} send \stat')
+    log('stat', f'User {message.from_user.full_name} send \\stat')
     for file_name in images:
         os.remove(file_name)
 
@@ -303,4 +303,4 @@ async def scheduler():
 
 if __name__ == '__main__':
     log('START ')
-    dp.run_polling(bot, skip_updates=True)
+    dp.run_polling(bot, skip_updates=True)  # TODO: data.json оббновляется, но 

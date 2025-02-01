@@ -41,6 +41,7 @@ def parsing_links():
         if 'raspisanie/' in link:  # логично и просто
             links[text] = link
 
+    log('parsing_links', str(link))
     return links
 
 
@@ -74,6 +75,7 @@ def parsing_pdf(link):
             if temp_links:
                 pdf_links.append({'ru_name': specialty, 'bel_name': translate_to_bel(specialty), 'content': temp_links})
 
+    log('parsing_pdf', str(link))
     return pdf_links
     
 
@@ -98,7 +100,7 @@ def parsing():
     with open(path, 'w', encoding='utf-8') as json_file:
         json.dump(result, json_file, ensure_ascii=False)
     
-    print(f'Расписание было обновленно в {current_time()}. Длина: {len(result)}')
+    log('parsing', f'Расписание было обновленно в {current_time()}. Длина: {len(result)}')
 
     return result
 
@@ -130,9 +132,11 @@ def get_data(json_name: str = 'data.json') -> dict:
     path = os.path.join(os.path.dirname(__file__), json_name)
 
     if not(os.path.exists(path)) or os.path.getsize(path) == 0:
+        log('get_data', 'Создаем json файл')
         parsing()
 
     with open(path, 'r', encoding='utf-8') as file:
+        log('get_data')
         data = json.load(file)
 
     return data
@@ -149,7 +153,7 @@ def download_pdf(link: str) -> str | bool:
         response = requests.get(link, verify=False)
 
         if response.status_code == 404:
-            print(f'404: {link}')
+            log(f'download_pdf', f'404: {link}')
             return False
         
         file_name = '_'.join(link.split('/')[-3:])  # https://philology.bsu.by/files/dnevnoe/raspisanie/4_rom-germ.pdf >>> dnevnoe_raspisanie_4_rom-germ.pdf
@@ -157,10 +161,11 @@ def download_pdf(link: str) -> str | bool:
         with open(file_name, 'wb') as file:
             file.write(response.content)
 
+        log('download_pdf', str(link))
         return file_name
     
     except Exception as e:
-        print(e, link)
+        log('download_pdf', f'{e}, {link}', error=True)
         return False
 
 
@@ -223,17 +228,14 @@ def add_schedule_link_or_id(link: str, id: int) -> bool:
 
     if link in schedule_links.keys():
         if id not in schedule_links[link]['id']:
-            print(f'New id: {id}, {link}')
+            log('add_schedule_link_or_id', f'New id: {id}, {link}')
             result[link] = {
                 'hash': schedule_links[link]['hash'],
                 'id': schedule_links[link]['id'] + [id]
             }
-            print(result)
-            print(schedule_links[link]['id'] + [id])
     else:
-        print(f'New link: {link}, {id}')
+        log('add_schedule_link_or_id', f'new link: {link}, {id}')
         path = download_pdf(link)
-        print(path)
         if path:
           
           hash_value = hash_pdf(path)
@@ -266,17 +268,17 @@ def remove_id_by_shedule(link: str, id: int):
 
 
     if link not in schedule_links.keys():
-        print(f'{link} not in {schedule_links.keys()}. {id}')
+        log('remove_id_by_shedule', f'{link} not in {schedule_links.keys()}. {id}')
         return
 
     if id not in schedule_links[link]['id']:
-        print(f'{id} not in {schedule_links[link]["id"]}')
+        log('remove_id_by_shedule', f'{id} not in {schedule_links[link]["id"]}. {link}')
         return
 
     del result[link]
 
     if len(schedule_links[link]['id']) > 1:
-        print(f'remove {id} for {link}')
+        log('remove_id_by_shedule', f'remove {id} for {link}')
         id_list = schedule_links[link]['id']
         del id_list[id_list.index(id)]
 
@@ -285,7 +287,7 @@ def remove_id_by_shedule(link: str, id: int):
             'id': id_list
         }
     else:
-        print(f'1 id({id}) for {link}. delete link')
+        log('remove_id_by_shedule', f'1 id({id}) for {link}. delete link')
 
 
     with open(file_path, 'w', encoding='utf-8') as json_file:
@@ -348,11 +350,12 @@ def cheak_link_hash() -> list:
                 result[link] = {'id': schedule_links[link]['id'], 'hash': pdf_hash}
 
         else:
-          print('cheak_link_hash: не получилось скачать', link)
+          log('cheak_link_hash', f'{link}: не получилось скачать', error=True)
 
     with open(file_path, 'w', encoding='utf-8') as json_file:
-        json.dump(result, json_file, ensure_ascii=False)    
-    print('cheak_link_hash:', link_to_update)
+        json.dump(result, json_file, ensure_ascii=False)   
+
+    log('cheak_link_hash', str(link_to_update)) 
 
     return link_to_update
 
@@ -360,7 +363,9 @@ def cheak_link_hash() -> list:
 
 def parsing_text_for_url(url: str) -> str:
     try:
-        return [r['raw_content'] for r in tavily_client.extract(urls=url)['results']][0]
+        result = [r['raw_content'] for r in tavily_client.extract(urls=url)['results']][0]
+        log('parsing_text_for_url', result)
     except Exception as e:
+        log('parsing_text_for_url', f'url={url}, error={e}', error=True)
         return f'Error: {e}'
     
