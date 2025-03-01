@@ -1,7 +1,11 @@
 from main import scheduler
-from func import current_hour
 import asyncio
+import datetime
 
-if current_hour() in [7, 10, 14, 17, 21]:
-    print(f'Scheduler. hour={current_hour()}')
+def hour_in_minsk():
+    time = datetime.datetime.now() + datetime.timedelta(hours=3)
+    return time.hour
+
+if hour_in_minsk() in [7, 10, 14, 17, 21]:
+    print(f'Scheduler. hour={hour_in_minsk()}')
     asyncio.run(scheduler())
