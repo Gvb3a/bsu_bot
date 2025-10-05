@@ -13,7 +13,7 @@ from log import log
 path = os.path.dirname(__file__)
 load_dotenv(os.path.join(path, '.env'))
 bot_token = str(os.getenv('BOT_TOKEN'))
-bot = Bot('7647417845:AAGG7GaCc0wv23f5jcKde0FYYeYNofNbEIY')
+bot = Bot(bot_token)
 dp = Dispatcher()
 
 
@@ -63,6 +63,7 @@ def inline_keyboard_by_hash(hashed_text: str):
 
 @dp.message(CommandStart())
 async def command_start_handler(message: Message) -> None:
+    print(2)
     await message.answer(text="Выберите расписание. После выбора можно настроить автоматическое обновление", reply_markup=start_inline_keyboard())
     sql_user(name=message.from_user.full_name, username=str(message.from_user.username), user_id=message.from_user.id, increase_counter=False)
     log(message_green='start command', message=f'User: {message.from_user.full_name}, ID: {message.from_user.id}')
@@ -240,4 +241,5 @@ async def scheduler():
 
 if __name__ == '__main__':
     log('START')
+    print(1)
     dp.run_polling(bot, skip_updates=True)
