@@ -28,7 +28,6 @@ def sql_launch() -> None:
                 username TEXT,
                 id INTEGER PRIMARY KEY,
                 last_message TEXT,
-                tracked_message TEXT,
                 first_message_time TEXT,
                 last_message_time TEXT,
                 number_of_messages INT
@@ -37,7 +36,6 @@ def sql_launch() -> None:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS statistics (
                 name TEXT,
-                id INT,
                 pdf_link TEXT,
                 auto INT,
                 time TEXT
@@ -63,9 +61,9 @@ def sql_user(name: str, username: str, user_id: int, increase_counter: bool = Tr
 
         if row is None:
             cursor.execute('''
-                INSERT INTO users (name, username, id, last_message, tracked_message, first_message_time, last_message_time, number_of_messages)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (name, username, user_id, 'None', 'None', current_time_str, current_time_str, 1))
+                INSERT INTO users (name, username, id, last_message, first_message_time, last_message_time, number_of_messages)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (name, username, user_id, 'None', current_time_str, current_time_str, 1))
         else:
             if name != row[0]:
                 cursor.execute("UPDATE users SET name = ? WHERE id = ?", (name, user_id))
