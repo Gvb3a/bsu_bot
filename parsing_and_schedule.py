@@ -75,7 +75,56 @@ def get_pdfs_from_section(link: str) -> list[dict]:
     log('get_pdfs_from_section', str(pdf_links))
     return pdf_links
     
+
+def get_master_degree_links() -> dict:
+    '''Для магистрантов существует расписания только на https://philology.bsu.by/ru/magistrantu/magistracy-timetable/dnevnoj-formy-obucheniya'''
+    return {'Расписание занятий для студентов магистратуры': 'https://philology.bsu.by/ru/magistrantu/magistracy-timetable/dnevnoj-formy-obucheniya'}
+
+def get_pdfs_from_master_degree(link: str) -> list[dict]:
+    '''Магистранты'''
+    log('get_pdfs_from_master_degree', 'start')
     
+    response = requests.get(link, verify=False)
+    response.encoding = 'utf-8'
+    soup = BeautifulSoup(response.text, 'html.parser')
+    
+    article_body = soup.find('div', {'itemprop': 'articleBody'})
+    if not article_body:
+        print('Article body not found')
+        return []
+    
+    result = []
+    paragraphs = article_body.find_all('p')
+    
+    for p in paragraphs:
+        text = p.get_text(strip=True)
+        if 'Специальность' in text:
+            match = re.search(r'Специальность\s*["\"]([^"\"]+)["\"]', text)
+            if match:
+                course_name = match.group(1)
+                content = {}
+                links = p.find_all('a', href=True)
+                for link_tag in links:
+                    href = link_tag['href']
+                    link_text = link_tag.get_text(strip=True)
+                    if href.endswith('.pdf'):
+                        if href.startswith('http'):
+                            href = href.replace('https://philology.bsu.by', '')
+                        year_match = re.search(r'(\d+)\s*год', link_text)
+                        if year_match:
+                            year_key = f"{year_match.group(1)} год"
+                            content[year_key] = href
+                if content:
+                    result.append({
+                        'course_name': course_name,
+                        'content': content
+                    })
+    
+    log('get_pdfs_from_master_degree', str(result))
+    return result
+
+    
+
 def parsing() -> dict:
     '''Create a json file with all links and return it
     {
@@ -106,7 +155,16 @@ def parsing() -> dict:
                 'content': pdfs
             }
 
-    
+    # магистратура
+    for name, link in get_master_degree_links().items():
+        pdfs = get_pdfs_from_master_degree(link)
+        if pdfs:
+            hash_name = hashlib.md5(name.encode('utf-8')).hexdigest()
+            result[hash_name] = {
+                'name': name,
+                'content': pdfs
+            }
+
     path = os.path.join(get_current_folder_path(), 'bsu_links.json')
     with open(path, 'w', encoding='utf-8') as json_file:
         json.dump(result, json_file, ensure_ascii=False)

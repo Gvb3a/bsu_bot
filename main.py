@@ -13,7 +13,7 @@ from log import log
 path = os.path.dirname(__file__)
 load_dotenv(os.path.join(path, '.env'))
 bot_token = str(os.getenv('BOT_TOKEN'))
-bot = Bot(bot_token)
+bot = Bot('7647417845:AAGG7GaCc0wv23f5jcKde0FYYeYNofNbEIY')
 dp = Dispatcher()
 
 

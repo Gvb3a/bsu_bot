@@ -1,4 +1,3 @@
-from main import parsing
-from parsing_and_schedule import current_time
-print(f'Parsing at {current_time()}')
+from parsing_and_schedule import minsk_time, parsing
+print(f'Parsing at {minsk_time()}')
 parsing()
