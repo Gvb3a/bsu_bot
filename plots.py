@@ -4,45 +4,95 @@ import matplotlib.pyplot as plt
 from typing import List
 
 
-def requests_by_hours() -> str:
-    '''Создает график запросов по часам и сохраняет его в файл'''
+def requests_by_hours(n: int = 10**5):
+    '''Создает график запросов по часам'''
     with sqlite3.connect('bsu_database.db') as connection:
         cursor = connection.cursor()
-        cursor.execute("SELECT time FROM statistics")
+        cursor.execute("SELECT time, auto FROM statistics")
 
-        hours = [int(time[0].split(':')[0]) for time in cursor.fetchall()][-10**5:]
+        # Получаем последние n записей
+        data = cursor.fetchall()[-n:]
+        
+        # Разделяем данные на авто и ручные запросы по часам
+        hours_auto = [int(time[0].split(':')[0]) for time in data if time[1] == 1]
+        hours_manual = [int(time[0].split(':')[0]) for time in data if time[1] == 0]
 
-        dict_of_time = {i: hours.count(i) for i in range(24)}
+        # Считаем количество для каждого часа
+        dict_of_time_auto = {i: hours_auto.count(i) for i in range(24)}
+        dict_of_time_manual = {i: hours_manual.count(i) for i in range(24)}
 
-        labels = list(dict_of_time.keys())
-        values = list(dict_of_time.values())
+        labels = list(range(24))
+        values_auto = list(dict_of_time_auto.values())
+        values_manual = list(dict_of_time_manual.values())
 
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plt.subplots(figsize=(12, 6))
 
         ax.set_title("Запросы по часам")
         ax.set_xlabel("Часы")
         ax.set_ylabel("Запросы")
 
-        bars = ax.bar(labels, values)
+        # Создаем stacked bar chart с правильными цветами
+        # Ручные запросы - синие (C0 - стандартный синий цвет matplotlib)
+        bars_manual = ax.bar(labels, values_manual, label='Ручные запросы', color='tab:blue')
+        # Автоматические запросы - оранжевые (C1 - стандартный оранжевый цвет matplotlib) 
+        bars_auto = ax.bar(labels, values_auto, bottom=values_manual, label='Автоматические запросы', color='tab:orange')
 
-        for bar in bars:
-            bar_value = bar.get_height()
-            bar_x = bar.get_x() + bar.get_width() / 2
-            bar_y = bar_value
+        # Добавляем подписи значений для автоматических запросов (сверху)
+        for i, (bar_auto, bar_manual) in enumerate(zip(bars_auto, bars_manual)):
+            auto_value = bar_auto.get_height()
+            if auto_value > 0:  # Только если есть автоматические запросы
+                bar_x = bar_auto.get_x() + bar_auto.get_width() / 2
+                bar_y = bar_manual.get_height() + auto_value  # Позиция сверху
 
-            value_label = f"{int(bar_value)}"
+                ax.annotate(
+                    f"{int(auto_value)}",
+                    xy=(bar_x, bar_y),
+                    xytext=(0, 3),
+                    textcoords="offset points",
+                    ha="center",
+                    va="bottom",
+                    fontsize=8,
+                    color='C1',  # Оранжевый цвет для автоматических
+                    fontweight='bold'
+                )
 
-            ax.annotate(
-                value_label,
-                xy=(bar_x, bar_y),
-                xytext=(0, 5),
-                textcoords="offset points",
-                ha="center",
-            )
+        # Добавляем подписи значений для ручных запросов (внутри столбца)
+        for bar_manual in bars_manual:
+            manual_value = bar_manual.get_height()
+            if manual_value > 0:  # Только если есть ручные запросы
+                bar_x = bar_manual.get_x() + bar_manual.get_width() / 2
+                bar_y = manual_value / 2  # Позиция посередине столбца
 
-        plt.savefig("requests_by_hours.png")
+                ax.annotate(
+                    f"{int(manual_value)}",
+                    xy=(bar_x, bar_y),
+                    xytext=(0, 0),
+                    textcoords="offset points",
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                    color='white',
+                    fontweight='bold'
+                )
 
-    return "requests_by_hours.png"
+        # Добавляем легенду
+        ax.legend()
+
+        # Настраиваем ось X
+        ax.set_xticks(range(0, 24, 1))
+        ax.grid(axis='y', alpha=0.3)
+
+        plt.tight_layout()
+        plt.show()
+
+        # Выводим статистику в консоль
+        total_auto = sum(values_auto)
+        total_manual = sum(values_manual)
+        print(f"Всего автоматических запросов: {total_auto}")
+        print(f"Всего ручных запросов: {total_manual}")
+        print(f"Общее количество запросов: {total_auto + total_manual}")
+
+requests_by_hours()
 
 
 def create_specialty(title: str) -> dict:
